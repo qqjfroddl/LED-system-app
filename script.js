@@ -68,6 +68,25 @@ const categories = {
     personal: { name: 'Personal', color: 'bg-pink-400', icon: '<i data-lucide="home"></i>', desc: '개인적인 삶' }
 };
 
+// JWT 토큰 디코딩 함수 (Google Sign-In용)
+const decodeJwtPayload = (token) => {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const binaryString = atob(base64);
+    const bytes = Uint8Array.from(binaryString, char => char.charCodeAt(0));
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(bytes);
+};
+
+// Google Sign-In 콜백 함수 (전역에 미리 선언)
+window.handleCredentialResponse = async (response) => {
+    // 함수가 나중에 완전히 정의될 때까지 대기
+    if (typeof handleCredentialResponseImpl === 'function') {
+        return handleCredentialResponseImpl(response);
+    }
+    console.warn('⚠️ handleCredentialResponseImpl이 아직 정의되지 않았습니다.');
+};
+
 // 유틸리티 함수들
 const formatDate = (date) => date.toISOString().split('T')[0];
 
@@ -2291,7 +2310,7 @@ const showIncompleteTasksModal = (incompleteTasks, yesterdayKey) => {
     
     // 각 할일의 개별 버튼 이벤트 리스너 설정
     listElement.querySelectorAll('.carry-over-btn').forEach(btn => {
-        btn.onclick = () => {
+        btn.onclick = async () => {
             const taskIndex = parseInt(btn.dataset.taskIndex);
             const storedTasks = JSON.parse(modal.dataset.incompleteTasks || '[]');
             const storedYesterdayKey = modal.dataset.yesterdayKey;
@@ -2748,16 +2767,8 @@ window.restoreYesterdayData = () => {
 };
 
 // 구글 로그인 관련 함수들
-const decodeJwtPayload = (token) => {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const binaryString = atob(base64);
-    const bytes = Uint8Array.from(binaryString, char => char.charCodeAt(0));
-    const decoder = new TextDecoder('utf-8');
-    return decoder.decode(bytes);
-};
-
-window.handleCredentialResponse = async (response) => {
+// Google Sign-In 콜백 함수 구현
+const handleCredentialResponseImpl = async (response) => {
     // JWT 토큰을 디코딩하여 사용자 정보 추출
     const payload = JSON.parse(decodeJwtPayload(response.credential));
     
@@ -2862,6 +2873,9 @@ window.handleCredentialResponse = async (response) => {
         console.log('로그인 성공 (로컬모드):', appState.user);
     }
 };
+
+// handleCredentialResponseImpl이 정의된 후 window.handleCredentialResponse 업데이트
+window.handleCredentialResponse = handleCredentialResponseImpl;
 
 const updateUserInterface = () => {
     const userInfo = document.getElementById('user-info');
