@@ -1,0 +1,42 @@
+{
+  "name": "life-manager-desktop",
+  "version": "1.0.0",
+  "description": "인생관리시스템 PC 전용 앱 (Electron)",
+  "author": "LEDsystem",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^28.2.5",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.ledsystem.lifeManager",
+    "productName": "인생관리시스템",
+    "files": [
+      "**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!node_modules/.bin",
+      "!**/*.map"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
+
+
+
+
+

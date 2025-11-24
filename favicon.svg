@@ -1,0 +1,18 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="인생관리 앱 로고">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7AE5D9"/>
+      <stop offset="50%" stop-color="#7E8BFF"/>
+      <stop offset="100%" stop-color="#B46BFF"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="224" height="224" rx="72" fill="url(#bg)"/>
+  <path d="M88 132l32 32 48-72" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M176 72l24-16-8 28" fill="none" stroke="url(#spark)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+

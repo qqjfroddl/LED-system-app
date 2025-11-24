@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자-LEDsystem</title>
+    <link rel="icon" type="image/svg+xml" href="admin-favicon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header class="admin-header">
+            <h1>관리자-LEDsystem</h1>
+            <p class="subtitle">LEDsystem 사용자 승인 관리</p>
+            <a href="index.html" class="back-link">← 메인으로 돌아가기</a>
+        </header>
+
+        <!-- 통계 카드 -->
+        <div class="stats-container">
+            <div class="stat-card pending">
+                <div class="stat-icon">⏳</div>
+                <div class="stat-info">
+                    <p class="stat-label">대기 중</p>
+                    <p class="stat-value" id="pending-count">0</p>
+                </div>
+            </div>
+            <div class="stat-card approved">
+                <div class="stat-icon">✅</div>
+                <div class="stat-info">
+                    <p class="stat-label">승인된 사용자</p>
+                    <p class="stat-value" id="approved-count">0</p>
+                </div>
+            </div>
+            <div class="stat-card total">
+                <div class="stat-icon">👥</div>
+                <div class="stat-info">
+                    <p class="stat-label">전체 사용자</p>
+                    <p class="stat-value" id="total-count">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 탭 네비게이션 -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="pending">
+                ⏳ 승인 대기 (<span id="pending-tab-count">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="approved">
+                ✅ 승인된 사용자 (<span id="approved-tab-count">0</span>)
+            </button>
+        </div>
+
+        <!-- 승인 대기 탭 -->
+        <div id="pending-tab" class="tab-content active">
+            <div class="users-section">
+                <h2>🔔 승인 대기 중인 사용자</h2>
+                <div class="refresh-info">
+                    <span>마지막 업데이트: <span id="last-update">-</span></span>
+                    <button class="refresh-btn" onclick="loadAllData()">🔄 새로고침</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>프로필</th>
+                                <th>이름</th>
+                                <th>이메일</th>
+                                <th>요청일시</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pending-users-body">
+                            <tr>
+                                <td colspan="5" class="loading">로딩 중...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 승인된 사용자 탭 -->
+        <div id="approved-tab" class="tab-content">
+            <div class="users-section">
+                <h2>✅ 승인된 사용자</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>프로필</th>
+                                <th>이름</th>
+                                <th>이메일</th>
+                                <th>역할</th>
+                                <th>가입일</th>
+                                <th>승인일</th>
+                                <th>작업</th>
+                            </tr>
+                        </thead>
+                        <tbody id="approved-users-body">
+                            <tr>
+                                <td colspan="7" class="loading">로딩 중...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 알림 토스트 -->
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <script>
+        // Supabase 초기화
+        // TODO: script.js와 동일한 값으로 설정하세요
+        const SUPABASE_URL = 'https://faeoveodareburrulgqs.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhZW92ZW9kYXJlYnVycnVsZ3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMyODU3NTUsImV4cCI6MjA3ODg2MTc1NX0.7fxmJQaJrpJqkBM5wtCqWi8D_wEDqgbxXzPpw6Y9DEM';
+
+        let supabase = null;
+
+        if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            console.log('✅ Supabase 연결됨');
+        } else {
+            alert('⚠️ Supabase 설정이 필요합니다.\n\nsupabase-setup.md 가이드를 참고하여 설정하세요.');
+        }
+
+        // 전역 변수
+        let pendingUsers = [];
+        let approvedUsers = [];
+
+        // 모든 데이터 로드
+        async function loadAllData() {
+            if (!supabase) {
+                showToast('Supabase가 설정되지 않았습니다.', 'error');
+                return;
+            }
+
+            try {
+                // 미승인 사용자
+                const { data: pending, error: pendingError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('is_approved', false)
+                    .order('requested_at', { ascending: false });
+                
+                if (pendingError) throw pendingError;
+                pendingUsers = pending || [];
+                
+                // 승인된 사용자
+                const { data: approved, error: approvedError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('is_approved', true)
+                    .order('approved_at', { ascending: false });
+                
+                if (approvedError) throw approvedError;
+                approvedUsers = approved || [];
+                
+                // 전체 사용자 수
+                const totalCount = pendingUsers.length + approvedUsers.length;
+                
+                // 통계 업데이트
+                document.getElementById('pending-count').textContent = pendingUsers.length;
+                document.getElementById('approved-count').textContent = approvedUsers.length;
+                document.getElementById('total-count').textContent = totalCount;
+                
+                // 탭 카운트 업데이트
+                document.getElementById('pending-tab-count').textContent = pendingUsers.length;
+                document.getElementById('approved-tab-count').textContent = approvedUsers.length;
+                
+                // 테이블 렌더링
+                renderPendingUsers();
+                renderApprovedUsers();
+                
+                // 마지막 업데이트 시간
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString('ko-KR');
+                
+                console.log('✅ 데이터 로드 완료');
+                
+            } catch (error) {
+                console.error('❌ 데이터 로드 실패:', error);
+                showToast('데이터를 불러오는 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 미승인 사용자 테이블 렌더링
+        function renderPendingUsers() {
+            const tbody = document.getElementById('pending-users-body');
+            
+            if (pendingUsers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty">승인 대기 중인 사용자가 없습니다. 🎉</td></tr>';
+            } else {
+                tbody.innerHTML = pendingUsers.map(user => `
+                    <tr>
+                        <td>
+                            <img src="${user.picture || 'https://via.placeholder.com/40'}" 
+                                 alt="${user.name}" 
+                                 class="user-avatar">
+                        </td>
+                        <td><strong>${user.name}</strong></td>
+                        <td>${user.email}</td>
+                        <td>${formatDateTime(user.requested_at)}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-approve" onclick="approveUser('${user.id}', '${escapeHtml(user.email)}')">
+                                ✅ 승인
+                            </button>
+                            <button class="btn btn-reject" onclick="rejectUser('${user.id}', '${escapeHtml(user.email)}')">
+                                ❌ 거절
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // 승인된 사용자 테이블 렌더링
+        function renderApprovedUsers() {
+            const tbody = document.getElementById('approved-users-body');
+            
+            if (approvedUsers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty">승인된 사용자가 없습니다.</td></tr>';
+            } else {
+                tbody.innerHTML = approvedUsers.map(user => `
+                    <tr>
+                        <td>
+                            <img src="${user.picture || 'https://via.placeholder.com/40'}" 
+                                 alt="${user.name}" 
+                                 class="user-avatar">
+                        </td>
+                        <td><strong>${user.name}</strong></td>
+                        <td>${user.email}</td>
+                        <td>
+                            <span class="role-badge ${user.role || 'user'}">${getRoleName(user.role)}</span>
+                        </td>
+                        <td>${formatDateTime(user.requested_at)}</td>
+                        <td>${formatDateTime(user.approved_at)}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-revoke" onclick="revokeApproval('${user.id}', '${escapeHtml(user.email)}')">
+                                🚫 승인 취소
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // 사용자 승인
+        async function approveUser(userId, email) {
+            if (!confirm(`"${email}" 사용자를 승인하시겠습니까?`)) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .update({
+                        is_approved: true,
+                        approved_at: new Date().toISOString(),
+                        approved_by: 'admin'
+                    })
+                    .eq('id', userId)
+                    .select();
+                
+                if (error) throw error;
+                
+                if (data && data.length > 0) {
+                    showToast('✅ 승인되었습니다!', 'success');
+                    await loadAllData();
+                } else {
+                    throw new Error('업데이트된 데이터를 찾을 수 없습니다.');
+                }
+                
+            } catch (error) {
+                console.error('승인 실패:', error);
+                showToast(`승인 중 오류가 발생했습니다: ${error.message}`, 'error');
+            }
+        }
+
+        // 사용자 거절 (삭제)
+        async function rejectUser(userId, email) {
+            if (!confirm(`"${email}" 사용자를 거절하시겠습니까?\n\n해당 사용자의 모든 데이터가 삭제됩니다.`)) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .delete()
+                    .eq('id', userId)
+                    .select();
+                
+                if (error) throw error;
+                
+                // 삭제 성공 확인 (DELETE는 삭제된 행을 반환)
+                if (data && data.length > 0) {
+                    showToast('❌ 거절되었습니다.', 'info');
+                    // 목록 새로고침 (await로 완료 대기)
+                    await loadAllData();
+                } else {
+                    // RLS 정책 문제일 수 있음
+                    console.warn('삭제 결과가 없습니다. RLS 정책을 확인하세요.');
+                    showToast('거절 처리되었지만 목록 갱신에 문제가 있습니다. 새로고침해주세요.', 'info');
+                    // 그래도 목록은 새로고침 시도
+                    await loadAllData();
+                }
+                
+            } catch (error) {
+                console.error('거절 실패:', error);
+                showToast(`거절 중 오류가 발생했습니다: ${error.message}`, 'error');
+            }
+        }
+
+        // 승인 취소
+        async function revokeApproval(userId, email) {
+            if (!confirm(`"${email}" 사용자의 승인을 취소하시겠습니까?`)) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .update({
+                        is_approved: false,
+                        approved_at: null,
+                        approved_by: null
+                    })
+                    .eq('id', userId)
+                    .select();
+                
+                if (error) throw error;
+                
+                if (data && data.length > 0) {
+                    showToast('🚫 승인이 취소되었습니다.', 'info');
+                    await loadAllData();
+                } else {
+                    throw new Error('업데이트된 데이터를 찾을 수 없습니다.');
+                }
+                
+            } catch (error) {
+                console.error('승인 취소 실패:', error);
+                showToast(`승인 취소 중 오류가 발생했습니다: ${error.message}`, 'error');
+            }
+        }
+
+        // 탭 전환
+        function switchTab(tabName) {
+            // 탭 버튼 활성화
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            
+            // 탭 콘텐츠 표시
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+        }
+
+        // 토스트 메시지 표시
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // 날짜 포맷팅
+        function formatDateTime(dateString) {
+            if (!dateString) return '-';
+            const date = new Date(dateString);
+            return date.toLocaleString('ko-KR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        // 역할 이름 가져오기
+        function getRoleName(role) {
+            const roleMap = {
+                'admin': '관리자',
+                'user': '일반 사용자'
+            };
+            return roleMap[role] || '일반 사용자';
+        }
+
+        // HTML 이스케이프
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 실시간 업데이트 (Supabase Realtime)
+        if (supabase) {
+            supabase
+                .channel('users')
+                .on('postgres_changes', { 
+                    event: '*', 
+                    schema: 'public', 
+                    table: 'users' 
+                }, (payload) => {
+                    console.log('실시간 업데이트:', payload);
+                    loadAllData();
+                })
+                .subscribe();
+        }
+
+        // 이벤트 리스너
+        document.addEventListener('DOMContentLoaded', () => {
+            // 초기 데이터 로드
+            loadAllData();
+            
+            // 탭 버튼 클릭
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    switchTab(btn.dataset.tab);
+                });
+            });
+            
+            // 30초마다 자동 갱신
+            setInterval(loadAllData, 30000);
+        });
+    </script>
+</body>
+</html>
+
+

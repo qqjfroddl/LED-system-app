@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 캐시 방지 메타 태그 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>인생관리시스템</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css?v=2.1">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons 추가 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase (Web Push) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+</head>
+<body>
+    <div class="app">
+        <div class="container">
+            <!-- 헤더 -->
+            <div class="header">
+                <h1>인생관리시스템</h1>
+                <div class="user-section">
+                    <div id="user-info" class="user-info hidden">
+                        <img id="user-avatar" class="user-avatar" src="" alt="사용자 아바타">
+                        <span id="user-name" class="user-name"></span>
+                        <button id="logout-btn" class="logout-btn">로그아웃</button>
+                    </div>
+                    <div id="login-section" class="login-section">
+                        <div id="g_id_onload"
+                             data-client_id="646863604089-a5smqvgvgi5hp584dafuprjf5oa3jucf.apps.googleusercontent.com"
+                             data-callback="handleCredentialResponse"
+                             data-auto_prompt="false">
+                        </div>
+                        <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline" data-text="signin_with" data-size="large" data-logo_alignment="left">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 탭 네비게이션 -->
+            <div class="tab-navigation">
+                <button class="tab-btn active" data-tab="today">
+                    <span class="tab-icon"><i data-lucide="calendar"></i></span>
+                    <span>오늘</span>
+                </button>
+                <button class="tab-btn" data-tab="weekly">
+                    <span class="tab-icon"><i data-lucide="trending-up"></i></span>
+                    <span>주간</span>
+                </button>
+                <button class="tab-btn" data-tab="monthly">
+                    <span class="tab-icon"><i data-lucide="trophy"></i></span>
+                    <span>월간</span>
+                </button>
+                <button class="tab-btn" data-tab="goals">
+                    <span class="tab-icon"><i data-lucide="target"></i></span>
+                    <span>목표</span>
+                </button>
+            </div>
+
+            <!-- 오늘 탭 -->
+            <div id="today-tab" class="tab-content active">
+                <!-- 날짜 네비게이션 -->
+                <div class="date-navigation">
+                    <button class="nav-btn" id="prev-day">‹</button>
+                    <div class="date-info" id="date-info-clickable">
+                        <h2 id="current-date"></h2>
+                        <button id="go-today" class="today-btn">오늘로</button>
+                    </div>
+                    <button class="nav-btn" id="next-day">›</button>
+                </div>
+
+                <!-- 루틴 섹션 -->
+                <div class="routine-section">
+                    <h2 class="section-title">
+                        <span class="title-icon"><i data-lucide="target"></i></span>
+                        오늘의 루틴 (<span id="completed-routines">0</span>/3 완료)
+                    </h2>
+                    <div id="routines-list" class="routines-list">
+                        <!-- 루틴 아이템들이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <!-- 할일 추가 섹션 -->
+                <div class="add-task-section">
+                    <h3>새로운 할일 추가</h3>
+                    <div class="category-buttons">
+                        <button class="category-btn active" data-category="work">Work</button>
+                        <button class="category-btn" data-category="job">Job</button>
+                        <button class="category-btn" data-category="routine">자기계발</button>
+                        <button class="category-btn" data-category="personal">Personal</button>
+                    </div>
+                    <div class="add-task-form">
+                        <input type="text" id="new-task-input" placeholder="복잡하고 어려운 일을 입력하세요...">
+                        <button id="add-task-btn" class="add-btn">
+                            <span>+</span> 추가
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 카테고리별 할일 목록 -->
+                <div id="tasks-by-category">
+                    <!-- 각 카테고리별 할일들이 여기에 동적으로 추가됩니다 -->
+                </div>
+
+                <!-- 성찰 섹션 -->
+                <button id="reflection-toggle" class="reflection-toggle">
+                    <i data-lucide="pen-square"></i> 하루성찰 작성하기
+                </button>
+
+                <div id="reflection-section" class="reflection-section hidden">
+                    <h3>오늘의 성찰</h3>
+                    <div class="reflection-form">
+                        <div class="reflection-field">
+                            <label><i data-lucide="heart"></i> 감사한 일</label>
+                            <textarea id="grateful" rows="3"></textarea>
+                        </div>
+                        <div class="reflection-field">
+                            <label><i data-lucide="sparkles"></i> 잘한 일</label>
+                            <textarea id="well-done" rows="3"></textarea>
+                        </div>
+                        <div class="reflection-field">
+                            <label><i data-lucide="lightbulb"></i> 아쉬운 일</label>
+                            <textarea id="regret" rows="3"></textarea>
+                        </div>
+                        <button id="save-reflection" class="save-reflection-btn">성찰 저장하기</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 주간 탭 -->
+            <div id="weekly-tab" class="tab-content">
+                <div class="weekly-header">
+                    <h2><i data-lucide="trending-up"></i> 주간 리포트</h2>
+                    <p id="week-range"></p>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card cyan">
+                        <p class="stat-label">할일 완료율</p>
+                        <p class="stat-value" id="weekly-completion-rate">0%</p>
+                        <p class="stat-detail" id="weekly-tasks-detail">0/0개</p>
+                    </div>
+                    <div class="stat-card purple">
+                        <p class="stat-label">루틴 실천율</p>
+                        <p class="stat-value" id="weekly-routine-rate">0%</p>
+                        <p class="stat-detail" id="weekly-routines-detail">0/0개</p>
+                    </div>
+                    <div class="stat-card pink">
+                        <p class="stat-label">성찰 작성</p>
+                        <p class="stat-value" id="weekly-reflection-days">0일</p>
+                        <p class="stat-detail">총 7일 중</p>
+                    </div>
+                    <div class="stat-card yellow">
+                        <p class="stat-label">활동 점수</p>
+                        <p class="stat-value" id="weekly-overall-score">0</p>
+                        <p class="stat-detail">종합 점수</p>
+                    </div>
+                </div>
+
+                <div class="category-stats">
+                    <h4>카테고리별 완료율</h4>
+                    <div id="category-progress">
+                        <!-- 카테고리별 진행률이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <div class="daily-stats">
+                    <h4>일별 현황</h4>
+                    <div id="daily-stats-list">
+                        <!-- 일별 통계가 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <div class="insights-section">
+                    <h4><i data-lucide="brain"></i> AI 주간 인사이트</h4>
+                    <p class="insights-subtitle">당신의 한 주를 분석한 맞춤형 피드백입니다</p>
+                    <div id="insights-list">
+                        <!-- 인사이트가 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <div class="reflection-section">
+                    <div class="reflection-header">
+                        <h4><i data-lucide="pen-square"></i> 주간 성찰</h4>
+                        <button id="generate-weekly-reflection-btn" class="generate-reflection-btn"><i data-lucide="sparkles"></i> AI 성찰 생성하기</button>
+                    </div>
+                    <div id="weekly-reflection-content" class="reflection-content">
+                        <p class="reflection-placeholder">주간 성찰을 생성하면 이곳에 표시됩니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 월간 탭 -->
+            <div id="monthly-tab" class="tab-content">
+                <div class="monthly-header">
+                    <h2>
+                        <span class="title-icon"><i data-lucide="trophy"></i></span>
+                        <span id="month-name"></span> 월간 리포트
+                    </h2>
+                    <p>한 달간의 여정을 돌아봅니다</p>
+                </div>
+
+                <div id="monthly-stats" class="monthly-stats">
+                    <!-- 월간 통계가 여기에 동적으로 추가됩니다 -->
+                </div>
+
+                <div id="monthly-insights" class="monthly-insights">
+                    <!-- 월간 인사이트가 여기에 동적으로 추가됩니다 -->
+                </div>
+
+                <div class="reflection-section">
+                    <div class="reflection-header">
+                        <h4><i data-lucide="pen-square"></i> 월간 성찰</h4>
+                        <button id="generate-monthly-reflection-btn" class="generate-reflection-btn"><i data-lucide="sparkles"></i> AI 성찰 생성하기</button>
+                    </div>
+                    <div id="monthly-reflection-content" class="reflection-content">
+                        <p class="reflection-placeholder">월간 성찰을 생성하면 이곳에 표시됩니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 목표 탭 -->
+            <div id="goals-tab" class="tab-content">
+                <!-- 연도 선택 -->
+                <div class="year-selector">
+                    <button id="prev-year">‹</button>
+                    <div class="year-info">
+                        <h3 id="selected-year"></h3>
+                        <button id="current-year-btn" class="current-year-btn">현재 연도</button>
+                    </div>
+                    <button id="next-year">›</button>
+                </div>
+
+                <!-- 연간 목표 -->
+                <div class="goals-section">
+                    <h2><i data-lucide="target"></i> <span id="goals-year"></span>년 연간목표</h2>
+                    <p>3가지 영역의 핵심 목표를 설정하세요</p>
+                    <div id="yearly-goals-content">
+                        <!-- 연간 목표가 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <!-- 월간 실천계획 -->
+                <div class="monthly-plans-section">
+                    <h2><i data-lucide="calendar"></i> <span id="plans-month"></span>월 실천계획</h2>
+                    <p>연간목표를 향한 이번 달 구체적 실행계획</p>
+                    <div id="monthly-plans-content">
+                        <!-- 월간 계획이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+
+                <!-- 월간 루틴 -->
+                <div class="monthly-routines-section">
+                    <h2><i data-lucide="target"></i> 월간 데일리 루틴</h2>
+                    <p><span id="routines-month"></span>월 매일 실천할 3가지 루틴</p>
+                    <div id="monthly-routines-content">
+                        <!-- 월간 루틴이 여기에 동적으로 추가됩니다 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 복사 확인 모달 -->
+    <div id="copy-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3><i data-lucide="target"></i> 새해 목표 설정</h3>
+            <p id="copy-modal-text"></p>
+            <div class="modal-buttons">
+                <button id="copy-confirm" class="modal-btn primary">예</button>
+                <button id="copy-cancel" class="modal-btn secondary">아니오</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 캘린더 모달 -->
+    <div id="calendar-modal" class="modal hidden">
+        <div class="calendar-modal-content">
+            <div class="calendar-header">
+                <button id="calendar-prev-month" class="calendar-nav-btn">‹</button>
+                <h3 id="calendar-month-year"></h3>
+                <button id="calendar-next-month" class="calendar-nav-btn">›</button>
+            </div>
+            <div class="calendar-grid">
+                <div class="calendar-weekdays">
+                    <div class="calendar-weekday">일</div>
+                    <div class="calendar-weekday">월</div>
+                    <div class="calendar-weekday">화</div>
+                    <div class="calendar-weekday">수</div>
+                    <div class="calendar-weekday">목</div>
+                    <div class="calendar-weekday">금</div>
+                    <div class="calendar-weekday">토</div>
+                </div>
+                <div id="calendar-days" class="calendar-days">
+                    <!-- 캘린더 날짜들이 여기에 동적으로 추가됩니다 -->
+                </div>
+            </div>
+            <div class="calendar-footer">
+                <button id="calendar-today" class="calendar-today-btn">오늘</button>
+                <button id="calendar-close" class="calendar-close-btn">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 어제 미완료 할일 처리 모달 -->
+    <div id="incomplete-tasks-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3><i data-lucide="clipboard-list"></i> 어제 미완료 할일</h3>
+            <p id="incomplete-tasks-text"></p>
+            <div id="incomplete-tasks-list" class="incomplete-tasks-list">
+                <!-- 미완료 할일 목록이 여기에 동적으로 추가됩니다 -->
+            </div>
+            <div class="modal-buttons">
+                <button id="carry-over-all-btn" class="modal-btn primary">모두 다음날로 이어가기</button>
+                <button id="delete-all-btn" class="modal-btn secondary">모두 삭제</button>
+                <button id="close-incomplete-modal-btn" class="modal-btn secondary">나중에</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=2.1"></script>
+</body>
+</html>
+

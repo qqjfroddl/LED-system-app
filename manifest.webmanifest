@@ -1,0 +1,23 @@
+{
+  "name": "분출 타이머",
+  "short_name": "타이머",
+  "description": "집중해서 일하는 시간을 도와주는 분출 타이머",
+  "start_url": "타이머_인생관리.html",
+  "display": "standalone",
+  "background_color": "#e0f2ff",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "timer-icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "timer-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
