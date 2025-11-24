@@ -78,13 +78,9 @@ const decodeJwtPayload = (token) => {
     return decoder.decode(bytes);
 };
 
-// Google Sign-In 콜백 함수 (전역에 미리 선언)
+// Google Sign-In 콜백 함수 (전역에 미리 선언 - Google Sign-In 스크립트 로드 전에 필요)
 window.handleCredentialResponse = async (response) => {
-    // 함수가 나중에 완전히 정의될 때까지 대기
-    if (typeof handleCredentialResponseImpl === 'function') {
-        return handleCredentialResponseImpl(response);
-    }
-    console.warn('⚠️ handleCredentialResponseImpl이 아직 정의되지 않았습니다.');
+    console.warn('⚠️ handleCredentialResponseImpl이 아직 정의되지 않았습니다. 잠시 후 다시 시도해주세요.');
 };
 
 // 유틸리티 함수들
@@ -3363,6 +3359,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 사용자 정보 초기화 (페이지 로드 시 로그인 상태 초기화)
     appState.user = null;
+    
+    // UI 초기화 (로그인 버튼 표시)
+    updateUserInterface();
     
     // 로컬스토리지에서 데이터 로드
     loadFromLocalStorage();
