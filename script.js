@@ -2297,7 +2297,7 @@ const showIncompleteTasksModal = (incompleteTasks, yesterdayKey) => {
             const storedYesterdayKey = modal.dataset.yesterdayKey;
             const selectedTask = storedTasks[taskIndex];
             if (selectedTask) {
-                carryOverIncompleteTasks([selectedTask], storedYesterdayKey);
+                await carryOverIncompleteTasks([selectedTask], storedYesterdayKey);
             }
         };
     });
@@ -2320,10 +2320,10 @@ const showIncompleteTasksModal = (incompleteTasks, yesterdayKey) => {
     const closeBtn = document.getElementById('close-incomplete-modal-btn');
     
     // 모두 다음날로 이어가기
-    carryOverBtn.onclick = () => {
+    carryOverBtn.onclick = async () => {
         const storedTasks = JSON.parse(modal.dataset.incompleteTasks || '[]');
         const storedYesterdayKey = modal.dataset.yesterdayKey;
-        carryOverIncompleteTasks(storedTasks, storedYesterdayKey);
+        await carryOverIncompleteTasks(storedTasks, storedYesterdayKey);
     };
     
     // 모두 삭제
@@ -2347,7 +2347,7 @@ const showIncompleteTasksModal = (incompleteTasks, yesterdayKey) => {
 
 
 // 미완료 할일을 다음날로 이어가기
-const carryOverIncompleteTasks = (incompleteTasks, yesterdayKey) => {
+const carryOverIncompleteTasks = async (incompleteTasks, yesterdayKey) => {
     // 오늘 날짜 키
     const today = new Date();
     const todayKey = formatDate(today);
@@ -3346,6 +3346,9 @@ document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
         }
     };
+    
+    // 사용자 정보 초기화 (페이지 로드 시 로그인 상태 초기화)
+    appState.user = null;
     
     // 로컬스토리지에서 데이터 로드
     loadFromLocalStorage();
