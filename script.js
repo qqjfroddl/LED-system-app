@@ -78,9 +78,22 @@ const decodeJwtPayload = (token) => {
     return decoder.decode(bytes);
 };
 
-// Google Sign-In 콜백 함수 (전역에 미리 선언 - Google Sign-In 스크립트 로드 전에 필요)
-window.handleCredentialResponse = async (response) => {
-    console.warn('⚠️ handleCredentialResponseImpl이 아직 정의되지 않았습니다. 잠시 후 다시 시도해주세요.');
+// Google Sign-In 콜백 함수 (미리 선언 - Google Sign-In 스크립트가 로드되기 전에 필요)
+// 실제 구현은 handleCredentialResponseImpl에서 정의됨
+window.handleCredentialResponse = async function(response) {
+    // handleCredentialResponseImpl이 정의되어 있으면 사용, 없으면 대기
+    if (typeof handleCredentialResponseImpl === 'function') {
+        return handleCredentialResponseImpl(response);
+    }
+    // 함수가 아직 정의되지 않았으면 잠시 후 재시도
+    console.warn('⚠️ 로그인 처리 함수가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
+    setTimeout(() => {
+        if (typeof handleCredentialResponseImpl === 'function') {
+            handleCredentialResponseImpl(response);
+        } else {
+            alert('로그인 처리 중 오류가 발생했습니다. 페이지를 새로고침해주세요.');
+        }
+    }, 500);
 };
 
 // 유틸리티 함수들
@@ -2870,7 +2883,8 @@ const handleCredentialResponseImpl = async (response) => {
     }
 };
 
-// handleCredentialResponseImpl이 정의된 후 window.handleCredentialResponse 업데이트
+// handleCredentialResponseImpl이 정의되었으므로 window.handleCredentialResponse를 업데이트
+// (위에서 이미 폴백 함수로 정의했으므로, 이제 실제 구현으로 교체)
 window.handleCredentialResponse = handleCredentialResponseImpl;
 
 const updateUserInterface = () => {
