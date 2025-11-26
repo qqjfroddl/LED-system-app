@@ -139,12 +139,12 @@
             }
 
             try {
-                // 미승인 사용자
+                // 미승인 사용자 (is_approved가 false이거나 null인 경우)
                 const { data: pending, error: pendingError } = await supabase
                     .from('users')
                     .select('*')
-                    .eq('is_approved', false)
-                    .order('requested_at', { ascending: false });
+                    .or('is_approved.is.null,is_approved.eq.false')
+                    .order('requested_at', { ascending: false, nullsFirst: false });
                 
                 if (pendingError) throw pendingError;
                 pendingUsers = pending || [];

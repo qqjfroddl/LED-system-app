@@ -118,7 +118,10 @@ if (typeof window.handleCredentialResponse === 'undefined') {
                             id: payload.sub,
                             email: payload.email,
                             name: payload.name,
-                            picture: payload.picture
+                            picture: payload.picture,
+                            is_approved: false,
+                            requested_at: new Date().toISOString(),
+                            role: 'user'
                         })
                         .select()
                         .single();
