@@ -3488,6 +3488,64 @@ const saveUserData = (userDataKey) => {
     }
 };
 
+// Google Sign-In 초기화 함수
+const initializeGoogleSignIn = () => {
+    // Google Sign-In 스크립트가 로드되었는지 확인
+    if (typeof window.google !== 'undefined' && window.google.accounts && window.google.accounts.id) {
+        console.log('✅ Google Sign-In 스크립트 로드됨');
+        console.log('📍 현재 도메인:', window.location.origin);
+        console.log('🔑 클라이언트 ID:', '646863604089-a5smqvgvgi5hp584dafuprjf5oa3jucf.apps.googleusercontent.com');
+        
+        // 콜백 함수가 제대로 등록되었는지 확인
+        if (typeof window.handleCredentialResponse === 'function') {
+            console.log('✅ handleCredentialResponse 함수 등록됨');
+        } else {
+            console.error('❌ handleCredentialResponse 함수가 등록되지 않음');
+            return;
+        }
+        
+        // Google Sign-In 초기화
+        try {
+            window.google.accounts.id.initialize({
+                client_id: '646863604089-a5smqvgvgi5hp584dafuprjf5oa3jucf.apps.googleusercontent.com',
+                callback: window.handleCredentialResponse,
+                auto_select: false
+            });
+            
+            // 로그인 버튼이 있으면 렌더링
+            const signInButton = document.querySelector('.g_id_signin');
+            if (signInButton) {
+                window.google.accounts.id.renderButton(signInButton, {
+                    type: 'standard',
+                    shape: 'rectangular',
+                    theme: 'outline',
+                    text: 'signin_with',
+                    size: 'large',
+                    logo_alignment: 'left'
+                });
+                console.log('✅ Google Sign-In 버튼 렌더링 완료');
+            }
+            
+            console.log('✅ Google Sign-In 초기화 완료');
+        } catch (error) {
+            console.error('❌ Google Sign-In 초기화 실패:', error);
+            console.error('오류 상세:', error.message, error.stack);
+        }
+    } else {
+        console.warn('⚠️ Google Sign-In 스크립트가 아직 로드되지 않음. 잠시 후 재시도...');
+        // 1초 후 재시도 (최대 5번)
+        if (!window.googleSignInRetryCount) {
+            window.googleSignInRetryCount = 0;
+        }
+        if (window.googleSignInRetryCount < 5) {
+            window.googleSignInRetryCount++;
+            setTimeout(initializeGoogleSignIn, 1000);
+        } else {
+            console.error('❌ Google Sign-In 스크립트 로드 실패 (최대 재시도 횟수 초과)');
+        }
+    }
+};
+
 // 이벤트 리스너 등록
 document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOMContentLoaded 이벤트 발생');
