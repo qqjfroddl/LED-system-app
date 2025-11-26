@@ -202,7 +202,7 @@
                         </td>
                         <td><strong>${user.name}</strong></td>
                         <td>${user.email}</td>
-                        <td>${formatDateTime(user.requested_at)}</td>
+                        <td>${formatDateTime(user.requested_at || user.created_at)}</td>
                         <td class="action-buttons">
                             <button class="btn btn-approve" onclick="approveUser('${user.id}', '${escapeHtml(user.email)}')">
                                 ✅ 승인
