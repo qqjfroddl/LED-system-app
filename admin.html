@@ -235,7 +235,7 @@
                         <td>
                             <span class="role-badge ${user.role || 'user'}">${getRoleName(user.role)}</span>
                         </td>
-                        <td>${formatDateTime(user.requested_at)}</td>
+                        <td>${formatDateTime(user.requested_at || user.created_at)}</td>
                         <td>${formatDateTime(user.approved_at)}</td>
                         <td class="action-buttons">
                             <button class="btn btn-revoke" onclick="revokeApproval('${user.id}', '${escapeHtml(user.email)}')">
