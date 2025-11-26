@@ -81,19 +81,145 @@ const decodeJwtPayload = (token) => {
 // Google Sign-In 콜백 함수 (미리 선언 - Google Sign-In 스크립트가 로드되기 전에 필요)
 // 실제 구현은 handleCredentialResponseImpl에서 정의됨
 window.handleCredentialResponse = async function(response) {
-    // handleCredentialResponseImpl이 정의되어 있으면 사용, 없으면 대기
-    if (typeof handleCredentialResponseImpl === 'function') {
-        return handleCredentialResponseImpl(response);
+    console.log('🔵 ========== Google Sign-In 콜백 호출됨 ==========');
+    console.log('📋 응답 데이터:', response);
+    console.log('🌐 현재 URL:', window.location.href);
+    console.log('🔑 클라이언트 ID:', '646863604089-a5smqvgvgi5hp584dafuprjf5oa3jucf.apps.googleusercontent.com');
+    
+    if (!response || !response.credential) {
+        console.error('❌ 응답에 credential이 없습니다:', response);
+        alert('로그인 응답이 올바르지 않습니다. 다시 시도해주세요.');
+        return;
     }
-    // 함수가 아직 정의되지 않았으면 잠시 후 재시도
-    console.warn('⚠️ 로그인 처리 함수가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.');
-    setTimeout(() => {
-        if (typeof handleCredentialResponseImpl === 'function') {
-            handleCredentialResponseImpl(response);
+    
+    try {
+        // JWT 토큰을 디코딩하여 사용자 정보 추출
+        const payload = JSON.parse(decodeJwtPayload(response.credential));
+        console.log('✅ 사용자 정보 디코딩 완료:', payload.name);
+        
+        // Supabase 모드인 경우
+        if (typeof supabase !== 'undefined' && supabase) {
+            try {
+                // 1. Supabase에 사용자 등록/확인
+                const { data: existingUser, error: selectError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', payload.sub)
+                    .single();
+                
+                let user = existingUser;
+                
+                // 사용자가 없으면 신규 등록
+                if (!existingUser) {
+                    const { data: newUser, error: insertError } = await supabase
+                        .from('users')
+                        .insert({
+                            id: payload.sub,
+                            email: payload.email,
+                            name: payload.name,
+                            picture: payload.picture
+                        })
+                        .select()
+                        .single();
+                    
+                    if (insertError) {
+                        console.error('사용자 등록 실패:', insertError);
+                        alert('회원가입 중 오류가 발생했습니다.');
+                        return;
+                    }
+                    
+                    user = newUser;
+                    
+                    // 신규 사용자 등록 시 이메일 알림 발송
+                    try {
+                        if (typeof sendUserRegistrationEmails === 'function') {
+                            await sendUserRegistrationEmails({
+                                userName: payload.name,
+                                userEmail: payload.email,
+                                requestedAt: new Date().toLocaleString('ko-KR')
+                            });
+                            console.log('✅ 이메일 알림 발송 완료');
+                        }
+                    } catch (emailError) {
+                        console.error('⚠️ 이메일 발송 실패 (앱은 정상 작동):', emailError);
+                    }
+                }
+                
+                // 2. 승인 여부 확인
+                if (!user.is_approved) {
+                    alert('✋ 계정 승인 대기 중입니다.\n\n관리자가 승인하면 사용 가능합니다.\n보통 24시간 이내에 처리됩니다.\n\n문의: admin@example.com');
+                    if (typeof logout === 'function') {
+                        logout();
+                    }
+                    return;
+                }
+                
+                // 3. 승인된 사용자 - 정상 로그인
+                appState.user = {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    picture: user.picture,
+                    role: user.role
+                };
+                
+                // 4. Supabase에서 데이터 로드
+                if (typeof loadUserDataFromSupabase === 'function') {
+                    await loadUserDataFromSupabase(user.id);
+                }
+                if (typeof updateUserInterface === 'function') {
+                    updateUserInterface();
+                }
+                if (typeof renderCurrentTab === 'function') {
+                    renderCurrentTab();
+                }
+                
+                // 로그인 후 어제 미완료 할일 확인
+                setTimeout(() => {
+                    if (typeof checkYesterdayIncompleteTasks === 'function') {
+                        checkYesterdayIncompleteTasks();
+                    }
+                }, 300);
+                
+                console.log('✅ 로그인 성공:', appState.user);
+                
+            } catch (error) {
+                console.error('❌ 로그인 실패:', error);
+                alert('로그인 중 오류가 발생했습니다: ' + error.message);
+            }
         } else {
-            alert('로그인 처리 중 오류가 발생했습니다. 페이지를 새로고침해주세요.');
+            // 로컬스토리지 모드 (기존 방식)
+            appState.user = {
+                id: payload.sub,
+                name: payload.name,
+                email: payload.email,
+                picture: payload.picture
+            };
+            
+            const userDataKey = `user_${appState.user.id}`;
+            if (typeof loadUserData === 'function') {
+                loadUserData(userDataKey);
+            }
+            if (typeof updateUserInterface === 'function') {
+                updateUserInterface();
+            }
+            if (typeof renderCurrentTab === 'function') {
+                renderCurrentTab();
+            }
+            
+            // 로그인 후 어제 미완료 할일 확인
+            setTimeout(() => {
+                if (typeof checkYesterdayIncompleteTasks === 'function') {
+                    checkYesterdayIncompleteTasks();
+                }
+            }, 300);
+            
+            console.log('✅ 로그인 성공 (로컬모드):', appState.user);
         }
-    }, 500);
+    } catch (error) {
+        console.error('❌ 로그인 처리 오류:', error);
+        alert('로그인 처리 중 오류가 발생했습니다: ' + error.message);
+    }
 };
 
 // 유틸리티 함수들
@@ -2883,9 +3009,7 @@ const handleCredentialResponseImpl = async (response) => {
     }
 };
 
-// handleCredentialResponseImpl이 정의되었으므로 window.handleCredentialResponse를 업데이트
-// (위에서 이미 폴백 함수로 정의했으므로, 이제 실제 구현으로 교체)
-window.handleCredentialResponse = handleCredentialResponseImpl;
+// handleCredentialResponse는 위에서 이미 직접 구현됨
 
 const updateUserInterface = () => {
     const userInfo = document.getElementById('user-info');
@@ -3364,6 +3488,13 @@ const saveUserData = (userDataKey) => {
 
 // 이벤트 리스너 등록
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('📄 DOMContentLoaded 이벤트 발생');
+    
+    // Google Sign-In 초기화 시도 (스크립트가 async defer로 로드되므로 약간의 지연 후 초기화)
+    setTimeout(() => {
+        initializeGoogleSignIn();
+    }, 1000);
+    
     // Lucide 아이콘 초기화
     const initLucideIcons = () => {
         if (typeof lucide !== 'undefined') {
