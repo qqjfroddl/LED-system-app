@@ -3020,6 +3020,7 @@ const updateUserInterface = () => {
     const userInfo = document.getElementById('user-info');
     const loginSection = document.getElementById('login-section');
     const logoutBtn = document.getElementById('logout-btn');
+    const adminLinkContainer = document.getElementById('admin-link-container');
     
     if (appState.user) {
         // 로그인된 상태
@@ -3032,12 +3033,26 @@ const updateUserInterface = () => {
         // 사용자 정보 표시
         document.getElementById('user-avatar').src = appState.user.picture;
         document.getElementById('user-name').textContent = appState.user.name;
+        
+        // 관리자 권한이 있는 경우에만 관리자 링크 표시
+        if (adminLinkContainer) {
+            if (appState.user.role === 'admin') {
+                adminLinkContainer.style.display = 'flex';
+            } else {
+                adminLinkContainer.style.display = 'none';
+            }
+        }
     } else {
         // 로그아웃된 상태
         userInfo.classList.add('hidden');
         loginSection.classList.remove('hidden');
         if (logoutBtn) {
             logoutBtn.textContent = '로그아웃';
+        }
+        
+        // 로그아웃 시 관리자 링크 숨김
+        if (adminLinkContainer) {
+            adminLinkContainer.style.display = 'none';
         }
     }
 };
