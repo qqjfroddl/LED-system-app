@@ -78,9 +78,10 @@ const decodeJwtPayload = (token) => {
     return decoder.decode(bytes);
 };
 
-// Google Sign-In 콜백 함수 (미리 선언 - Google Sign-In 스크립트가 로드되기 전에 필요)
-// 실제 구현은 handleCredentialResponseImpl에서 정의됨
-window.handleCredentialResponse = async function(response) {
+// Google Sign-In 콜백 함수 (Google Sign-In 스크립트가 로드되기 전에 미리 선언)
+// 반드시 전역 스코프에 정의되어야 하며, 스크립트 로드 전에 존재해야 함
+if (typeof window.handleCredentialResponse === 'undefined') {
+    window.handleCredentialResponse = async function(response) {
     console.log('🔵 ========== Google Sign-In 콜백 호출됨 ==========');
     console.log('📋 응답 데이터:', response);
     console.log('🌐 현재 URL:', window.location.href);
@@ -220,7 +221,8 @@ window.handleCredentialResponse = async function(response) {
         console.error('❌ 로그인 처리 오류:', error);
         alert('로그인 처리 중 오류가 발생했습니다: ' + error.message);
     }
-};
+    };
+    } // if (typeof window.handleCredentialResponse === 'undefined') 닫기
 
 // 유틸리티 함수들
 const formatDate = (date) => date.toISOString().split('T')[0];
@@ -2581,7 +2583,7 @@ const carryOverIncompleteTasks = async (incompleteTasks, yesterdayKey) => {
 };
 
 // 미완료 할일 삭제
-const deleteIncompleteTasks = (incompleteTasks, yesterdayKey) => {
+const deleteIncompleteTasks = async (incompleteTasks, yesterdayKey) => {
     // 어제 데이터 백업 (안전을 위해)
     const yesterdayData = appState.allData[yesterdayKey];
     if (!yesterdayData) {
