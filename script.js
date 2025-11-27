@@ -396,8 +396,12 @@ const updateCurrentData = async (updates) => {
         [dateKey]: mergedData
     };
     
+    const todayDateKey = formatDate(new Date());
     console.log('💾 데이터 업데이트:', {
-        날짜: dateKey,
+        저장날짜: dateKey,
+        오늘날짜: todayDateKey,
+        날짜일치: dateKey === todayDateKey,
+        appStateCurrentDate: formatDate(appState.currentDate),
         할일개수: mergedData.tasks?.length || 0,
         완료된할일: mergedData.tasks?.filter(t => t.completed).length || 0,
         미완료할일: mergedData.tasks?.filter(t => !t.completed).length || 0,
@@ -3385,12 +3389,22 @@ const saveToSupabase = async () => {
             return;
         }
         
-        console.log(`💾 ${dateKeys.length}개 날짜의 데이터를 Supabase에 저장 중...`);
+        const todayKey = formatDate(new Date());
+        console.log(`💾 ${dateKeys.length}개 날짜의 데이터를 Supabase에 저장 중...`, {
+            저장할날짜들: dateKeys,
+            오늘날짜: todayKey,
+            오늘날짜포함: dateKeys.includes(todayKey)
+        });
         
         // 모든 날짜의 데이터를 배치로 저장
         const savePromises = dateKeys.map(async (dateKey) => {
             const data = appState.allData[dateKey];
             if (!data) return;
+            
+            console.log(`📤 ${dateKey} 저장 중:`, {
+                할일개수: data.tasks?.length || 0,
+                루틴개수: data.routines?.length || 0
+            });
             
             // 완료된 할일 포함 모든 데이터 저장
             const { error: dataError } = await supabase
