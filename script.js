@@ -228,7 +228,13 @@ if (typeof window.handleCredentialResponse === 'undefined') {
     } // if (typeof window.handleCredentialResponse === 'undefined') 닫기
 
 // 유틸리티 함수들
-const formatDate = (date) => date.toISOString().split('T')[0];
+// 로컬 시간 기준으로 날짜 포맷팅 (UTC 대신 한국 시간 사용)
+const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 const getDateKey = () => formatDate(appState.currentDate);
 
