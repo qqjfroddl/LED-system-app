@@ -3413,7 +3413,19 @@ const loadUserDataFromSupabase = async (userId) => {
             }
         });
         
-        console.log('✅ Supabase에서 데이터 로드 완료');
+        console.log('✅ Supabase에서 데이터 로드 완료:', {
+            사용자: appState.user?.name || appState.user?.email,
+            일별데이터: Object.keys(appState.allData).length + '개',
+            월간루틴: Object.keys(appState.monthlyRoutines).length + '개',
+            연간목표: Object.keys(appState.yearlyGoals).length + '개',
+            월간계획: Object.keys(appState.monthlyPlans).length + '개'
+        });
+        
+        // 로드 완료 후 즉시 렌더링 (중요! - 캐시 문제 해결)
+        if (typeof renderCurrentTab === 'function') {
+            renderCurrentTab();
+            console.log('🔄 데이터 로드 후 UI 렌더링 완료');
+        }
         
     } catch (error) {
         console.error('❌ 데이터 로드 실패:', error);
