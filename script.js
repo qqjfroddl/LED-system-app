@@ -3304,37 +3304,68 @@ const logout = () => {
     console.log('로그아웃 완료');
 };
 
-// Supabase에서 데이터 로드
+// Supabase에서 데이터 로드 (캐시 무시)
 const loadUserDataFromSupabase = async (userId) => {
     if (!supabase) return;
     
     try {
-        // 일별 데이터 로드
+        console.log('📥 Supabase에서 데이터 로드 시작 (캐시 무시):', userId);
+        
+        // 일별 데이터 로드 (캐시 무시를 위해 updated_at 기준 내림차순 정렬)
         const { data: userData, error: userDataError } = await supabase
             .from('user_data')
             .select('*')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false }); // 최신 데이터 먼저
         
-        if (userDataError) throw userDataError;
+        if (userDataError) {
+            console.error('❌ 데이터 로드 실패:', userDataError);
+            throw userDataError;
+        }
         
-        // 데이터 복원
+        console.log(`📥 ${userData?.length || 0}개 날짜의 데이터를 로드했습니다.`);
+        
+        // 데이터 복원 (기존 데이터 초기화 후 새로 로드)
         appState.allData = {};
+        const todayKey = formatDate(new Date());
+        
         userData?.forEach(row => {
             if (row.date && row.data) {
                 appState.allData[row.date] = row.data;
                 
-                // 오늘 날짜 데이터 확인
-                const todayKey = formatDate(new Date());
+                // 오늘 날짜 데이터 상세 로그
                 if (row.date === todayKey && row.data.tasks) {
                     console.log('📥 Supabase에서 오늘 할일 로드:', {
+                        날짜: row.date,
                         전체할일개수: row.data.tasks.length,
+                        완료된할일: row.data.tasks.filter(t => t.completed).length,
+                        미완료할일: row.data.tasks.filter(t => !t.completed).length,
                         카테고리별할일: row.data.tasks.reduce((acc, task) => {
                             acc[task.category] = (acc[task.category] || 0) + 1;
                             return acc;
-                        }, {})
+                        }, {}),
+                        업데이트시간: row.updated_at
                     });
                 }
             }
+        });
+        
+        // 오늘 날짜 데이터가 없으면 기본 데이터 생성
+        if (!appState.allData[todayKey]) {
+            console.log('ℹ️ 오늘 날짜 데이터가 없어 기본 데이터를 생성합니다.');
+            const monthlyRoutinesList = getMonthlyRoutinesForDate(new Date());
+            const defaultRoutines = monthlyRoutinesList.map(r => ({ ...r, completed: false }));
+            appState.allData[todayKey] = {
+                tasks: [],
+                routines: defaultRoutines,
+                reflection: { grateful: '', wellDone: '', regret: '' }
+            };
+        }
+        
+        console.log('✅ 데이터 로드 완료:', {
+            전체날짜수: Object.keys(appState.allData).length,
+            오늘날짜데이터존재: !!appState.allData[todayKey],
+            오늘할일개수: appState.allData[todayKey]?.tasks?.length || 0
         });
         
         // 월간 루틴 로드
