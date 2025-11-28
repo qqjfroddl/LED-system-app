@@ -3045,6 +3045,16 @@ const handleCredentialResponseImpl = async (response) => {
             
             // 4. Supabase에서 데이터 로드
             await loadUserDataFromSupabase(user.id);
+            
+            // 5. 오늘 날짜로 강제 설정 (중요!)
+            appState.currentDate = new Date();
+            const todayKey = formatDate(new Date());
+            console.log('🔄 로그인 후 오늘 날짜로 설정:', {
+                오늘날짜: todayKey,
+                오늘데이터존재: !!appState.allData[todayKey],
+                오늘할일개수: appState.allData[todayKey]?.tasks?.length || 0
+            });
+            
             updateUserInterface();
             renderCurrentTab();
             
@@ -3435,7 +3445,17 @@ const loadUserDataFromSupabase = async (userId) => {
             월간계획: Object.keys(appState.monthlyPlans).length + '개'
         });
         
-        // 로드 완료 후 즉시 렌더링 (중요! - 캐시 문제 해결)
+        // 로드 완료 후 오늘 날짜로 설정하고 렌더링 (중요!)
+        const todayKey = formatDate(new Date());
+        appState.currentDate = new Date(); // 오늘 날짜로 강제 설정
+        
+        console.log('🔄 로드 완료 후 오늘 날짜로 설정:', {
+            설정된날짜: todayKey,
+            오늘날짜데이터존재: !!appState.allData[todayKey],
+            오늘할일개수: appState.allData[todayKey]?.tasks?.length || 0
+        });
+        
+        // 즉시 렌더링
         if (typeof renderCurrentTab === 'function') {
             renderCurrentTab();
             console.log('🔄 데이터 로드 후 UI 렌더링 완료');
