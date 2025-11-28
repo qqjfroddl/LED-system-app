@@ -2015,92 +2015,135 @@ const addTask = async () => {
     const newTaskInput = document.getElementById('new-task-input');
     const taskText = newTaskInput.value.trim();
     
-    if (taskText) {
-        // 카테고리가 설정되지 않은 경우 기본값으로 설정
-        if (!appState.selectedCategory || !categories[appState.selectedCategory]) {
-            console.warn('⚠️ 선택된 카테고리가 유효하지 않습니다. 기본값(work)을 사용합니다.');
-            appState.selectedCategory = 'work';
-        }
-        
-        const currentData = getCurrentData();
-        const newTask = {
-            id: Date.now(),
-            text: taskText,
-            category: appState.selectedCategory,
-            completed: false
-        };
-        
-        console.log('📝 할일 추가:', {
-            카테고리: appState.selectedCategory,
-            할일내용: taskText,
-            할일객체: newTask
-        });
-        
-        // 기존 tasks 배열 보존 및 새 할일 추가 (완료된 할일 포함)
-        const updatedTasks = [...(currentData.tasks || []), newTask];
-        
-        // 실시간 저장 보장
-        await updateCurrentData({
-            tasks: updatedTasks
-        });
-        
-        console.log('✅ 할일 저장 완료. 현재 할일 개수:', updatedTasks.length);
-        
-        newTaskInput.value = '';
+    if (!taskText) return;
+    
+    // 카테고리가 설정되지 않은 경우 기본값으로 설정
+    if (!appState.selectedCategory || !categories[appState.selectedCategory]) {
+        console.warn('⚠️ 선택된 카테고리가 유효하지 않습니다. 기본값(work)을 사용합니다.');
+        appState.selectedCategory = 'work';
     }
+    
+    // 중요: 항상 오늘 날짜의 데이터를 가져와서 수정
+    const todayKey = getTodayDateKey();
+    const todayData = getDataForDate(new Date());
+    
+    const newTask = {
+        id: Date.now(),
+        text: taskText,
+        category: appState.selectedCategory,
+        completed: false
+    };
+    
+    console.log('📝 할일 추가 (오늘 날짜로 저장):', {
+        오늘날짜: todayKey,
+        카테고리: appState.selectedCategory,
+        할일내용: taskText,
+        기존할일개수: todayData.tasks?.length || 0
+    });
+    
+    // 기존 tasks 배열 보존 및 새 할일 추가 (완료된 할일 포함)
+    const updatedTasks = [...(todayData.tasks || []), newTask];
+    
+    // 오늘 날짜 데이터 업데이트
+    appState.allData[todayKey] = {
+        ...todayData,
+        tasks: updatedTasks
+    };
+    
+    console.log('💾 오늘 날짜 데이터 업데이트 완료:', {
+        날짜: todayKey,
+        할일개수: updatedTasks.length
+    });
+    
+    // 즉시 저장
+    await saveToLocalStorage();
+    
+    // 저장 후 확인
+    const savedData = appState.allData[todayKey];
+    console.log('✅ 할일 저장 완료. 확인:', {
+        저장된할일개수: savedData?.tasks?.length || 0,
+        새로추가된할일: newTask.text
+    });
+    
+    newTaskInput.value = '';
+    
+    // UI 업데이트
+    renderCurrentTab();
 };
 
 const toggleTask = async (id) => {
-    const currentData = getCurrentData();
-    const taskToToggle = currentData.tasks.find(t => t.id === id);
+    // 중요: 항상 오늘 날짜의 데이터를 가져와서 수정
+    const todayKey = getTodayDateKey();
+    const todayData = getDataForDate(new Date());
+    const taskToToggle = todayData.tasks?.find(t => t.id === id);
     
     if (!taskToToggle) {
         console.warn('⚠️ 토글할 할일을 찾을 수 없습니다:', id);
         return;
     }
     
-    const updatedTasks = currentData.tasks.map(t => 
+    const updatedTasks = todayData.tasks.map(t => 
         t.id === id ? { ...t, completed: !t.completed } : t
     );
     
-    console.log('🔄 할일 상태 변경:', {
+    console.log('🔄 할일 상태 변경 (오늘 날짜로 저장):', {
+        오늘날짜: todayKey,
         ID: id,
         내용: taskToToggle.text,
         이전상태: taskToToggle.completed ? '완료' : '미완료',
         변경후: !taskToToggle.completed ? '완료' : '미완료'
     });
     
-    // 실시간 저장 보장
-    await updateCurrentData({ tasks: updatedTasks });
+    // 오늘 날짜 데이터 업데이트
+    appState.allData[todayKey] = {
+        ...todayData,
+        tasks: updatedTasks
+    };
+    
+    // 즉시 저장
+    await saveToLocalStorage();
+    
+    // UI 업데이트
+    renderCurrentTab();
 };
 
 const deleteTask = async (id) => {
-    const currentData = getCurrentData();
-    const taskToDelete = currentData.tasks.find(t => t.id === id);
+    // 중요: 항상 오늘 날짜의 데이터를 가져와서 수정
+    const todayKey = getTodayDateKey();
+    const todayData = getDataForDate(new Date());
+    const taskToDelete = todayData.tasks?.find(t => t.id === id);
     
     if (!taskToDelete) {
         console.warn('⚠️ 삭제할 할일을 찾을 수 없습니다:', id);
         return;
     }
     
-    // 완료된 할일 삭제 확인 (선택사항 - 완료된 할일도 삭제 가능)
-    // 사용자가 명시적으로 삭제 버튼을 누른 것이므로 삭제 허용
-    console.log('🗑️ 할일 삭제:', {
+    console.log('🗑️ 할일 삭제 (오늘 날짜로 저장):', {
+        오늘날짜: todayKey,
         ID: id,
         내용: taskToDelete.text,
         완료여부: taskToDelete.completed,
         카테고리: taskToDelete.category
     });
     
-    const updatedTasks = currentData.tasks.filter(t => t.id !== id);
+    const updatedTasks = todayData.tasks.filter(t => t.id !== id);
     
-    // 실시간 저장 보장
-    await updateCurrentData({ tasks: updatedTasks });
+    // 오늘 날짜 데이터 업데이트
+    appState.allData[todayKey] = {
+        ...todayData,
+        tasks: updatedTasks
+    };
+    
+    // 즉시 저장
+    await saveToLocalStorage();
     
     // 수정 모드였으면 취소
     if (appState.editingTaskId === id) {
         appState.editingTaskId = null;
     }
+    
+    // UI 업데이트
+    renderCurrentTab();
 };
 
 const startTaskEdit = (id) => {
@@ -3434,30 +3477,40 @@ const saveToSupabase = async () => {
         const todayKey = getTodayDateKey();
         const todayData = getDataForDate(new Date());
         
-        if (todayData && todayData.tasks && todayData.tasks.length > 0) {
-            // 오늘 날짜 데이터 강제 저장 (중요!)
-            console.log(`🔒 오늘 날짜(${todayKey}) 데이터 강제 저장:`, {
-                할일개수: todayData.tasks.length,
-                루틴개수: todayData.routines?.length || 0
+        // 오늘 날짜 데이터 강제 저장 (항상 저장)
+        console.log(`🔒 오늘 날짜(${todayKey}) 데이터 강제 저장:`, {
+            할일개수: todayData.tasks?.length || 0,
+            루틴개수: todayData.routines?.length || 0,
+            데이터존재: !!todayData
+        });
+        
+        const { data: savedTodayData, error: dataError } = await supabase
+            .from('user_data')
+            .upsert({
+                user_id: userId,
+                date: todayKey,
+                data: todayData,
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id,date'
+            })
+            .select();
+        
+        if (dataError) {
+            console.error(`❌ 오늘 날짜(${todayKey}) 강제 저장 실패:`, dataError);
+            throw dataError;
+        }
+        
+        // 저장 확인
+        if (savedTodayData && savedTodayData.length > 0) {
+            const saved = savedTodayData[0];
+            console.log(`✅ 오늘 날짜(${todayKey}) 데이터 강제 저장 완료 및 확인:`, {
+                저장된할일개수: saved.data?.tasks?.length || 0,
+                저장된루틴개수: saved.data?.routines?.length || 0,
+                업데이트시간: saved.updated_at
             });
-            
-            const { error: dataError } = await supabase
-                .from('user_data')
-                .upsert({
-                    user_id: userId,
-                    date: todayKey,
-                    data: todayData,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'user_id,date'
-                });
-            
-            if (dataError) {
-                console.error(`❌ 오늘 날짜(${todayKey}) 강제 저장 실패:`, dataError);
-                throw dataError;
-            }
-            
-            console.log(`✅ 오늘 날짜(${todayKey}) 데이터 강제 저장 완료`);
+        } else {
+            console.warn(`⚠️ 오늘 날짜(${todayKey}) 저장은 성공했지만 확인 데이터가 없습니다.`);
         }
         
         // 월간 루틴 저장
