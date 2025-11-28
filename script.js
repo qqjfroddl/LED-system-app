@@ -2055,28 +2055,71 @@ const addTask = async () => {
         할일개수: updatedTasks.length
     });
     
-    // 즉시 저장
-    await saveToLocalStorage();
-    
-    // 저장 후 즉시 Supabase에서 다시 로드해서 확인 (중요!)
+    // 즉시 오늘 날짜만 Supabase에 저장 (단순하고 확실하게)
     if (supabase && appState.user) {
-        const { data: reloadedData, error: reloadError } = await supabase
-            .from('user_data')
-            .select('*')
-            .eq('user_id', appState.user.id)
-            .eq('date', todayKey)
-            .single();
+        console.log('🔒 오늘 날짜 데이터만 즉시 저장 시작:', {
+            날짜: todayKey,
+            할일개수: updatedTasks.length,
+            사용자ID: appState.user.id
+        });
         
-        if (!reloadError && reloadedData && reloadedData.data) {
-            // Supabase에서 로드한 데이터로 업데이트
-            appState.allData[todayKey] = reloadedData.data;
-            console.log('✅ 저장 후 Supabase에서 재확인 완료:', {
-                저장된할일개수: reloadedData.data.tasks?.length || 0,
-                새로추가된할일: newTask.text
-            });
-        } else {
-            console.warn('⚠️ 저장 후 재확인 실패:', reloadError);
+        const { data: savedData, error: saveError } = await supabase
+            .from('user_data')
+            .upsert({
+                user_id: appState.user.id,
+                date: todayKey,
+                data: {
+                    ...todayData,
+                    tasks: updatedTasks
+                },
+                updated_at: new Date().toISOString()
+            }, {
+                onConflict: 'user_id,date'
+            })
+            .select();
+        
+        if (saveError) {
+            console.error('❌ 저장 실패:', saveError);
+            alert('저장에 실패했습니다: ' + saveError.message);
+            return;
         }
+        
+        if (savedData && savedData.length > 0) {
+            const saved = savedData[0];
+            // Supabase에서 저장된 데이터로 업데이트
+            appState.allData[todayKey] = saved.data;
+            console.log('✅ 저장 완료 및 확인:', {
+                저장된할일개수: saved.data.tasks?.length || 0,
+                새로추가된할일: newTask.text,
+                업데이트시간: saved.updated_at
+            });
+            
+            // 저장 후 즉시 다시 읽어서 최종 확인
+            const { data: verifyData, error: verifyError } = await supabase
+                .from('user_data')
+                .select('*')
+                .eq('user_id', appState.user.id)
+                .eq('date', todayKey)
+                .single();
+            
+            if (!verifyError && verifyData && verifyData.data) {
+                console.log('✅ 최종 확인 완료:', {
+                    Supabase할일개수: verifyData.data.tasks?.length || 0,
+                    로컬할일개수: appState.allData[todayKey]?.tasks?.length || 0
+                });
+            } else {
+                console.warn('⚠️ 최종 확인 실패:', verifyError);
+            }
+        } else {
+            console.error('❌ 저장은 성공했지만 데이터가 반환되지 않음');
+        }
+        
+        // 로컬스토리지에도 백업
+        const userDataKey = `user_${appState.user.id}`;
+        saveUserData(userDataKey);
+    } else {
+        // Supabase 없으면 로컬스토리지만
+        await saveToLocalStorage();
     }
     
     newTaskInput.value = '';
@@ -3492,7 +3535,7 @@ const loadUserData = (userDataKey) => {
     if (savedMonthlyPlans) appState.monthlyPlans = JSON.parse(savedMonthlyPlans);
 };
 
-// Supabase에 데이터 저장 (모든 날짜의 데이터 실시간 저장)
+// Supabase에 데이터 저장 (오늘 날짜만 확실하게 저장)
 const saveToSupabase = async () => {
     if (!supabase || !appState.user) {
         console.log('ℹ️ Supabase 저장 건너뜀:', { hasSupabase: !!supabase, hasUser: !!appState.user });
@@ -3501,67 +3544,16 @@ const saveToSupabase = async () => {
     
     try {
         const userId = appState.user.id;
-        
-        // 모든 날짜의 데이터 저장 (완료된 할일 포함 모든 데이터 보존)
-        const dateKeys = Object.keys(appState.allData);
-        
-        if (dateKeys.length === 0) {
-            console.log('ℹ️ 저장할 데이터가 없습니다.');
-            return;
-        }
-        
-        const todayKey = formatDate(new Date());
-        console.log(`💾 ${dateKeys.length}개 날짜의 데이터를 Supabase에 저장 중...`, {
-            저장할날짜들: dateKeys,
-            오늘날짜: todayKey,
-            오늘날짜포함: dateKeys.includes(todayKey)
-        });
-        
-        // 모든 날짜의 데이터를 배치로 저장
-        const savePromises = dateKeys.map(async (dateKey) => {
-            const data = appState.allData[dateKey];
-            if (!data) return;
-            
-            console.log(`📤 ${dateKey} 저장 중:`, {
-                할일개수: data.tasks?.length || 0,
-                루틴개수: data.routines?.length || 0
-            });
-            
-            // 완료된 할일 포함 모든 데이터 저장
-            const { error: dataError } = await supabase
-                .from('user_data')
-                .upsert({
-                    user_id: userId,
-                    date: dateKey,
-                    data: data, // 완료된 할일, 루틴, 성찰 모두 포함
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'user_id,date'
-                });
-            
-            if (dataError) {
-                console.error(`❌ ${dateKey} 데이터 저장 실패:`, dataError);
-                throw dataError;
-            }
-            
-            return dateKey;
-        });
-        
-        const savedDates = await Promise.all(savePromises);
-        console.log(`✅ ${savedDates.length}개 날짜의 데이터 저장 완료`);
-        
-        // 오늘 날짜의 데이터는 별도로 확인 및 강제 저장
         const todayKey = getTodayDateKey();
         const todayData = getDataForDate(new Date());
         
-        // 오늘 날짜 데이터 강제 저장 (항상 저장)
-        console.log(`🔒 오늘 날짜(${todayKey}) 데이터 강제 저장:`, {
+        // 오늘 날짜 데이터만 확실하게 저장
+        console.log(`🔒 오늘 날짜(${todayKey}) 데이터 저장:`, {
             할일개수: todayData.tasks?.length || 0,
-            루틴개수: todayData.routines?.length || 0,
-            데이터존재: !!todayData
+            루틴개수: todayData.routines?.length || 0
         });
         
-        const { data: savedTodayData, error: dataError } = await supabase
+        const { data: savedData, error: saveError } = await supabase
             .from('user_data')
             .upsert({
                 user_id: userId,
@@ -3573,21 +3565,33 @@ const saveToSupabase = async () => {
             })
             .select();
         
-        if (dataError) {
-            console.error(`❌ 오늘 날짜(${todayKey}) 강제 저장 실패:`, dataError);
-            throw dataError;
+        if (saveError) {
+            console.error(`❌ 오늘 날짜(${todayKey}) 저장 실패:`, saveError);
+            throw saveError;
         }
         
-        // 저장 확인
-        if (savedTodayData && savedTodayData.length > 0) {
-            const saved = savedTodayData[0];
-            console.log(`✅ 오늘 날짜(${todayKey}) 데이터 강제 저장 완료 및 확인:`, {
+        if (savedData && savedData.length > 0) {
+            const saved = savedData[0];
+            console.log(`✅ 오늘 날짜(${todayKey}) 저장 완료:`, {
                 저장된할일개수: saved.data?.tasks?.length || 0,
-                저장된루틴개수: saved.data?.routines?.length || 0,
                 업데이트시간: saved.updated_at
             });
+            
+            // 저장 후 즉시 다시 읽어서 확인
+            const { data: verifyData, error: verifyError } = await supabase
+                .from('user_data')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('date', todayKey)
+                .single();
+            
+            if (!verifyError && verifyData) {
+                console.log('✅ 저장 확인 완료:', {
+                    Supabase할일개수: verifyData.data?.tasks?.length || 0
+                });
+            }
         } else {
-            console.warn(`⚠️ 오늘 날짜(${todayKey}) 저장은 성공했지만 확인 데이터가 없습니다.`);
+            console.error('❌ 저장은 성공했지만 데이터가 반환되지 않음');
         }
         
         // 월간 루틴 저장
