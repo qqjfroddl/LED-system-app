@@ -2058,12 +2058,26 @@ const addTask = async () => {
     // 즉시 저장
     await saveToLocalStorage();
     
-    // 저장 후 확인
-    const savedData = appState.allData[todayKey];
-    console.log('✅ 할일 저장 완료. 확인:', {
-        저장된할일개수: savedData?.tasks?.length || 0,
-        새로추가된할일: newTask.text
-    });
+    // 저장 후 즉시 Supabase에서 다시 로드해서 확인 (중요!)
+    if (supabase && appState.user) {
+        const { data: reloadedData, error: reloadError } = await supabase
+            .from('user_data')
+            .select('*')
+            .eq('user_id', appState.user.id)
+            .eq('date', todayKey)
+            .single();
+        
+        if (!reloadError && reloadedData && reloadedData.data) {
+            // Supabase에서 로드한 데이터로 업데이트
+            appState.allData[todayKey] = reloadedData.data;
+            console.log('✅ 저장 후 Supabase에서 재확인 완료:', {
+                저장된할일개수: reloadedData.data.tasks?.length || 0,
+                새로추가된할일: newTask.text
+            });
+        } else {
+            console.warn('⚠️ 저장 후 재확인 실패:', reloadError);
+        }
+    }
     
     newTaskInput.value = '';
     
