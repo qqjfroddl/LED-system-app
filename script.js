@@ -49,6 +49,8 @@ let appState = {
     calendarDate: new Date(), // 캘린더에서 표시할 날짜
     user: null, // 사용자 정보
     editingTaskId: null, // 수정 중인 할일 ID
+    realtimeChannels: [], // 실시간 동기화 채널들
+    saveTimer: null, // 자동저장 타이머
     // 타이머 상태
     timerState: {
         isRunning: false,
@@ -237,6 +239,41 @@ const formatDate = (date) => {
 };
 
 const getDateKey = () => formatDate(appState.currentDate);
+
+// Tasks merge 함수 (id 기준으로 병합)
+const mergeTasks = (remoteTasks = [], localTasks = []) => {
+    const map = new Map();
+    // 원격 데이터 먼저
+    for (const t of remoteTasks) map.set(t.id, t);
+    // 로컬 데이터로 덮어쓰기 (로컬 우선)
+    for (const t of localTasks) {
+        const prev = map.get(t.id) || {};
+        map.set(t.id, { ...prev, ...t });
+    }
+    return [...map.values()];
+};
+
+// 일별 데이터 merge (충돌 방지)
+const mergeDayData = (remote = {}, local = {}) => {
+    return {
+        ...remote,
+        ...local,
+        tasks: mergeTasks(remote.tasks || [], local.tasks || []),
+        routines: local.routines || remote.routines || [],
+        reflection: local.reflection || remote.reflection || { grateful: '', wellDone: '', regret: '' }
+    };
+};
+
+// 자동저장 스케줄링 (debounce)
+const scheduleAutosave = () => {
+    if (appState.saveTimer) {
+        clearTimeout(appState.saveTimer);
+    }
+    appState.saveTimer = setTimeout(async () => {
+        console.log('⏰ 자동저장 실행');
+        await saveToLocalStorage();
+    }, 600); // 0.6초 후 저장
+};
 
 const getMonthlyRoutinesForDate = (date) => {
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -2055,23 +2092,50 @@ const addTask = async () => {
         할일개수: updatedTasks.length
     });
     
-    // 즉시 오늘 날짜만 Supabase에 저장 (단순하고 확실하게)
+    // 즉시 오늘 날짜만 Supabase에 저장 (merge 사용)
     if (supabase && appState.user) {
-        console.log('🔒 오늘 날짜 데이터만 즉시 저장 시작:', {
+        console.log('🔒 오늘 날짜 데이터만 즉시 저장 시작 (merge):', {
             날짜: todayKey,
             할일개수: updatedTasks.length,
             사용자ID: appState.user.id
         });
         
+        // 저장 전에 Supabase에서 최신 데이터 가져오기 (충돌 방지)
+        const { data: remoteRow, error: fetchError } = await supabase
+            .from('user_data')
+            .select('data')
+            .eq('user_id', appState.user.id)
+            .eq('date', todayKey)
+            .maybeSingle();
+        
+        if (fetchError) {
+            console.error('❌ 최신 데이터 가져오기 실패:', fetchError);
+        }
+        
+        // 로컬 데이터
+        const localData = {
+            ...todayData,
+            tasks: updatedTasks
+        };
+        
+        // Merge (충돌 방지)
+        const mergedData = remoteRow?.data 
+            ? mergeDayData(remoteRow.data, localData)
+            : localData;
+        
+        console.log('🔀 데이터 병합 완료:', {
+            원격할일: remoteRow?.data?.tasks?.length || 0,
+            로컬할일: localData.tasks?.length || 0,
+            병합후할일: mergedData.tasks?.length || 0
+        });
+        
+        // 병합된 데이터 저장
         const { data: savedData, error: saveError } = await supabase
             .from('user_data')
             .upsert({
                 user_id: appState.user.id,
                 date: todayKey,
-                data: {
-                    ...todayData,
-                    tasks: updatedTasks
-                },
+                data: mergedData,
                 updated_at: new Date().toISOString()
             }, {
                 onConflict: 'user_id,date'
@@ -2093,23 +2157,6 @@ const addTask = async () => {
                 새로추가된할일: newTask.text,
                 업데이트시간: saved.updated_at
             });
-            
-            // 저장 후 즉시 다시 읽어서 최종 확인
-            const { data: verifyData, error: verifyError } = await supabase
-                .from('user_data')
-                .select('*')
-                .eq('user_id', appState.user.id)
-                .eq('date', todayKey)
-                .single();
-            
-            if (!verifyError && verifyData && verifyData.data) {
-                console.log('✅ 최종 확인 완료:', {
-                    Supabase할일개수: verifyData.data.tasks?.length || 0,
-                    로컬할일개수: appState.allData[todayKey]?.tasks?.length || 0
-                });
-            } else {
-                console.warn('⚠️ 최종 확인 실패:', verifyError);
-            }
         } else {
             console.error('❌ 저장은 성공했지만 데이터가 반환되지 않음');
         }
@@ -3089,7 +3136,10 @@ const handleCredentialResponseImpl = async (response) => {
             // 4. Supabase에서 데이터 로드
             await loadUserDataFromSupabase(user.id);
             
-            // 5. 오늘 날짜로 강제 설정 (중요!)
+            // 5. 실시간 동기화 시작 (중요!)
+            startRealtimeSync(user.id);
+            
+            // 6. 오늘 날짜로 강제 설정
             appState.currentDate = new Date();
             const todayKey = formatDate(new Date());
             console.log('🔄 로그인 후 오늘 날짜로 설정:', {
@@ -3348,6 +3398,9 @@ const displayMonthlyReflection = (reflection) => {
 };
 
 const logout = () => {
+    // 실시간 동기화 중지
+    stopRealtimeSync();
+    
     // Google 로그아웃
     google.accounts.id.disableAutoSelect();
     
@@ -3370,6 +3423,122 @@ const logout = () => {
     
     console.log('로그아웃 완료');
 };
+
+// 실시간 동기화 중지
+function stopRealtimeSync() {
+    if (!supabase || appState.realtimeChannels.length === 0) return;
+    
+    appState.realtimeChannels.forEach(ch => {
+        supabase.removeChannel(ch);
+    });
+    appState.realtimeChannels = [];
+    console.log('🔌 실시간 동기화 중지');
+}
+
+// 실시간 동기화 시작
+function startRealtimeSync(userId) {
+    if (!supabase || !userId) return;
+    
+    console.log('🔄 실시간 동기화 시작:', userId);
+    
+    // 기존 채널 제거
+    stopRealtimeSync();
+    
+    // 1) 일별 데이터(user_data) 실시간 수신
+    const ch1 = supabase
+        .channel(`rt:user_data:${userId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'user_data',
+            filter: `user_id=eq.${userId}`
+        }, (payload) => {
+            console.log('🔔 [user_data] 다른 세션 변경:', payload);
+            const row = payload.new;
+            if (row?.date && row?.data) {
+                appState.allData[row.date] = row.data;
+                renderCurrentTab();
+                console.log(`✅ ${row.date} 데이터 실시간 업데이트`);
+            }
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ user_data 실시간 구독 완료');
+            }
+        });
+    appState.realtimeChannels.push(ch1);
+    
+    // 2) 월간 루틴
+    const ch2 = supabase
+        .channel(`rt:monthly_routines:${userId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'monthly_routines',
+            filter: `user_id=eq.${userId}`
+        }, (payload) => {
+            console.log('🔔 [monthly_routines] 다른 세션 변경:', payload);
+            const row = payload.new;
+            if (row?.month_key && row?.routines) {
+                appState.monthlyRoutines[row.month_key] = row.routines;
+                renderCurrentTab();
+            }
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ monthly_routines 실시간 구독 완료');
+            }
+        });
+    appState.realtimeChannels.push(ch2);
+    
+    // 3) 연간 목표
+    const ch3 = supabase
+        .channel(`rt:yearly_goals:${userId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'yearly_goals',
+            filter: `user_id=eq.${userId}`
+        }, (payload) => {
+            console.log('🔔 [yearly_goals] 다른 세션 변경:', payload);
+            const row = payload.new;
+            if (row?.year && row?.goals) {
+                appState.yearlyGoals[row.year] = row.goals;
+                renderCurrentTab();
+            }
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ yearly_goals 실시간 구독 완료');
+            }
+        });
+    appState.realtimeChannels.push(ch3);
+    
+    // 4) 월간 계획
+    const ch4 = supabase
+        .channel(`rt:monthly_plans:${userId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'monthly_plans',
+            filter: `user_id=eq.${userId}`
+        }, (payload) => {
+            console.log('🔔 [monthly_plans] 다른 세션 변경:', payload);
+            const row = payload.new;
+            if (row?.month_key && row?.plans) {
+                appState.monthlyPlans[row.month_key] = row.plans;
+                renderCurrentTab();
+            }
+        })
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('✅ monthly_plans 실시간 구독 완료');
+            }
+        });
+    appState.realtimeChannels.push(ch4);
+    
+    console.log('✅ 실시간 동기화 설정 완료 (4개 채널)');
+}
 
 // Supabase에서 데이터 로드 (캐시 무시)
 const loadUserDataFromSupabase = async (userId) => {
