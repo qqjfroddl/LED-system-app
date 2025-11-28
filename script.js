@@ -2204,8 +2204,12 @@ const toggleTask = async (id) => {
         tasks: updatedTasks
     };
     
-    // 즉시 저장
-    await saveToLocalStorage();
+    // 병합 후 저장
+    if (supabase && appState.user) {
+        await saveTodayMerged();
+    } else {
+        await saveToLocalStorage();
+    }
     
     // UI 업데이트
     renderCurrentTab();
@@ -2238,8 +2242,12 @@ const deleteTask = async (id) => {
         tasks: updatedTasks
     };
     
-    // 즉시 저장
-    await saveToLocalStorage();
+    // 병합 후 저장
+    if (supabase && appState.user) {
+        await saveTodayMerged();
+    } else {
+        await saveToLocalStorage();
+    }
     
     // 수정 모드였으면 취소
     if (appState.editingTaskId === id) {
@@ -3396,6 +3404,102 @@ const displayMonthlyReflection = (reflection) => {
     
     content.innerHTML = `<div class="reflection-text">${html}</div>`;
 };
+
+// 할일 병합 (ID 기준으로 중복 제거 및 병합)
+function mergeTasks(remoteTasks = [], localTasks = []) {
+    const map = new Map();
+    
+    // 원격 데이터 먼저
+    for (const t of remoteTasks) {
+        map.set(t.id, t);
+    }
+    
+    // 로컬 데이터로 덮어쓰기 (로컬 우선)
+    for (const t of localTasks) {
+        const prev = map.get(t.id) || {};
+        map.set(t.id, { ...prev, ...t });
+    }
+    
+    return [...map.values()];
+}
+
+// 하루 데이터 병합 (충돌 방지)
+function mergeDayData(remote = {}, local = {}) {
+    return {
+        ...remote,
+        ...local,
+        tasks: mergeTasks(remote.tasks || [], local.tasks || []),
+        routines: local.routines || remote.routines || [],
+        reflection: {
+            ...(remote.reflection || {}),
+            ...(local.reflection || {})
+        }
+    };
+}
+
+// 오늘 날짜 데이터 병합 후 저장 (충돌 방지)
+async function saveTodayMerged() {
+    if (!supabase || !appState.user) {
+        console.warn('ℹ️ Supabase 또는 사용자 정보 없음');
+        return;
+    }
+    
+    const userId = appState.user.id;
+    const todayKey = getTodayDateKey();
+    const local = appState.allData[todayKey] || getDataForDate(new Date());
+    
+    console.log('🔄 저장 전 최신 데이터 확인:', {
+        날짜: todayKey,
+        로컬할일개수: local.tasks?.length || 0
+    });
+    
+    // Supabase에서 최신 데이터 가져오기
+    const { data: remoteRow, error: fetchError } = await supabase
+        .from('user_data')
+        .select('data')
+        .eq('user_id', userId)
+        .eq('date', todayKey)
+        .maybeSingle();
+    
+    if (fetchError) {
+        console.error('❌ 최신 데이터 조회 실패:', fetchError);
+    }
+    
+    // 병합
+    const merged = mergeDayData(remoteRow?.data || {}, local);
+    
+    console.log('🔄 데이터 병합 완료:', {
+        원격할일: remoteRow?.data?.tasks?.length || 0,
+        로컬할일: local.tasks?.length || 0,
+        병합후할일: merged.tasks?.length || 0
+    });
+    
+    // 저장
+    const { data: savedData, error: saveError } = await supabase
+        .from('user_data')
+        .upsert({
+            user_id: userId,
+            date: todayKey,
+            data: merged,
+            updated_at: new Date().toISOString()
+        }, {
+            onConflict: 'user_id,date'
+        })
+        .select();
+    
+    if (saveError) {
+        console.error('❌ 병합 후 저장 실패:', saveError);
+        throw saveError;
+    }
+    
+    if (savedData && savedData.length > 0) {
+        // 저장된 데이터로 로컬 업데이트
+        appState.allData[todayKey] = savedData[0].data;
+        console.log('✅ 병합 후 저장 완료:', {
+            저장된할일개수: savedData[0].data?.tasks?.length || 0
+        });
+    }
+}
 
 const logout = () => {
     // 실시간 동기화 중지
