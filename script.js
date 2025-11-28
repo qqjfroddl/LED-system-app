@@ -347,16 +347,21 @@ const loadFromLocalStorage = () => {
     }
 };
 
+// 오늘 날짜 키 가져오기 (항상 현재 날짜 기준)
+const getTodayDateKey = () => formatDate(new Date());
+
 // 데이터 업데이트 함수 (실시간 저장 보장, 완료된 할일 보호)
+// 중요: 저장할 때는 항상 오늘 날짜로 저장
 const updateCurrentData = async (updates) => {
-    const dateKey = getDateKey();
-    const currentData = getCurrentData();
+    // 저장할 때는 항상 오늘 날짜 사용
+    const todayKey = getTodayDateKey();
+    const todayData = getDataForDate(new Date());
     
     // 기존 데이터 백업 (완료된 할일 보호)
-    const existingCompletedTasks = (currentData.tasks || []).filter(t => t.completed);
+    const existingCompletedTasks = (todayData.tasks || []).filter(t => t.completed);
     
     // 업데이트할 데이터 병합
-    const mergedData = { ...currentData };
+    const mergedData = { ...todayData };
     
     // 모든 업데이트 필드 적용
     Object.keys(updates).forEach(key => {
@@ -390,18 +395,14 @@ const updateCurrentData = async (updates) => {
         }
     });
     
-    // appState.allData 업데이트
+    // appState.allData 업데이트 (항상 오늘 날짜로)
     appState.allData = {
         ...appState.allData,
-        [dateKey]: mergedData
+        [todayKey]: mergedData
     };
     
-    const todayDateKey = formatDate(new Date());
-    console.log('💾 데이터 업데이트:', {
-        저장날짜: dateKey,
-        오늘날짜: todayDateKey,
-        날짜일치: dateKey === todayDateKey,
-        appStateCurrentDate: formatDate(appState.currentDate),
+    console.log('💾 데이터 업데이트 (오늘 날짜로 저장):', {
+        저장날짜: todayKey,
         할일개수: mergedData.tasks?.length || 0,
         완료된할일: mergedData.tasks?.filter(t => t.completed).length || 0,
         미완료할일: mergedData.tasks?.filter(t => !t.completed).length || 0,
@@ -3429,25 +3430,34 @@ const saveToSupabase = async () => {
         const savedDates = await Promise.all(savePromises);
         console.log(`✅ ${savedDates.length}개 날짜의 데이터 저장 완료`);
         
-        // 현재 날짜의 데이터는 별도로 확인
-        const dateKey = getDateKey();
-        const currentData = getCurrentData();
+        // 오늘 날짜의 데이터는 별도로 확인 및 강제 저장
+        const todayKey = getTodayDateKey();
+        const todayData = getDataForDate(new Date());
         
-        if (currentData) {
-            // 중복 저장 방지 (이미 위에서 저장됨)
-            // 추가 검증을 위해 한 번 더 저장 (upsert이므로 안전)
+        if (todayData && todayData.tasks && todayData.tasks.length > 0) {
+            // 오늘 날짜 데이터 강제 저장 (중요!)
+            console.log(`🔒 오늘 날짜(${todayKey}) 데이터 강제 저장:`, {
+                할일개수: todayData.tasks.length,
+                루틴개수: todayData.routines?.length || 0
+            });
+            
             const { error: dataError } = await supabase
                 .from('user_data')
                 .upsert({
                     user_id: userId,
-                    date: dateKey,
-                    data: currentData,
+                    date: todayKey,
+                    data: todayData,
                     updated_at: new Date().toISOString()
                 }, {
                     onConflict: 'user_id,date'
                 });
             
-            if (dataError) throw dataError;
+            if (dataError) {
+                console.error(`❌ 오늘 날짜(${todayKey}) 강제 저장 실패:`, dataError);
+                throw dataError;
+            }
+            
+            console.log(`✅ 오늘 날짜(${todayKey}) 데이터 강제 저장 완료`);
         }
         
         // 월간 루틴 저장
