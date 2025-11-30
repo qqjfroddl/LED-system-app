@@ -2092,80 +2092,13 @@ const addTask = async () => {
         할일개수: updatedTasks.length
     });
     
-    // 즉시 오늘 날짜만 Supabase에 저장 (merge 사용)
+    // 병합 후 저장 (saveTodayMerged 사용)
     if (supabase && appState.user) {
-        console.log('🔒 오늘 날짜 데이터만 즉시 저장 시작 (merge):', {
-            날짜: todayKey,
-            할일개수: updatedTasks.length,
-            사용자ID: appState.user.id
-        });
-        
-        // 저장 전에 Supabase에서 최신 데이터 가져오기 (충돌 방지)
-        const { data: remoteRow, error: fetchError } = await supabase
-            .from('user_data')
-            .select('data')
-            .eq('user_id', appState.user.id)
-            .eq('date', todayKey)
-            .maybeSingle();
-        
-        if (fetchError) {
-            console.error('❌ 최신 데이터 가져오기 실패:', fetchError);
-        }
-        
-        // 로컬 데이터
-        const localData = {
-            ...todayData,
-            tasks: updatedTasks
-        };
-        
-        // Merge (충돌 방지)
-        const mergedData = remoteRow?.data 
-            ? mergeDayData(remoteRow.data, localData)
-            : localData;
-        
-        console.log('🔀 데이터 병합 완료:', {
-            원격할일: remoteRow?.data?.tasks?.length || 0,
-            로컬할일: localData.tasks?.length || 0,
-            병합후할일: mergedData.tasks?.length || 0
-        });
-        
-        // 병합된 데이터 저장
-        const { data: savedData, error: saveError } = await supabase
-            .from('user_data')
-            .upsert({
-                user_id: appState.user.id,
-                date: todayKey,
-                data: mergedData,
-                updated_at: new Date().toISOString()
-            }, {
-                onConflict: 'user_id,date'
-            })
-            .select();
-        
-        if (saveError) {
-            console.error('❌ 저장 실패:', saveError);
-            alert('저장에 실패했습니다: ' + saveError.message);
-            return;
-        }
-        
-        if (savedData && savedData.length > 0) {
-            const saved = savedData[0];
-            // Supabase에서 저장된 데이터로 업데이트
-            appState.allData[todayKey] = saved.data;
-            console.log('✅ 저장 완료 및 확인:', {
-                저장된할일개수: saved.data.tasks?.length || 0,
-                새로추가된할일: newTask.text,
-                업데이트시간: saved.updated_at
-            });
-        } else {
-            console.error('❌ 저장은 성공했지만 데이터가 반환되지 않음');
-        }
-        
+        await saveTodayMerged();
         // 로컬스토리지에도 백업
         const userDataKey = `user_${appState.user.id}`;
         saveUserData(userDataKey);
     } else {
-        // Supabase 없으면 로컬스토리지만
         await saveToLocalStorage();
     }
     
@@ -3423,19 +3356,7 @@ function mergeTasks(remoteTasks = [], localTasks = []) {
     return [...map.values()];
 }
 
-// 하루 데이터 병합 (충돌 방지)
-function mergeDayData(remote = {}, local = {}) {
-    return {
-        ...remote,
-        ...local,
-        tasks: mergeTasks(remote.tasks || [], local.tasks || []),
-        routines: local.routines || remote.routines || [],
-        reflection: {
-            ...(remote.reflection || {}),
-            ...(local.reflection || {})
-        }
-    };
-}
+// 중복 함수 제거됨 - 위의 mergeDayData 사용
 
 // 오늘 날짜 데이터 병합 후 저장 (충돌 방지)
 async function saveTodayMerged() {
